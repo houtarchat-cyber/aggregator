@@ -13,6 +13,8 @@ import subprocess
 import sys
 import time
 
+import urllib.parse
+
 import crawl
 import executable
 import push
@@ -31,6 +33,22 @@ PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 
 DATA_BASE = os.path.join(PATH, "data")
 
+# 添加预定义的订阅链接列表
+DEFAULT_SUB_URLS = [
+    "https://jiang.netlify.app",
+    "https://tt.vg/freev2",
+    "https://muma16fx.netlify.app/",
+    "https://www.liesauer.net/yogurt/subscribe",
+    "https://raw.githubusercontent.com/ripaojiedian/freenode/main/sub",
+    "https://raw.githubusercontent.com/ZywChannel/free/main/sub", 
+    "https://raw.githubusercontent.com/mfuu/v2ray/master/v2ray",
+    "https://raw.githubusercontent.com/anaer/Sub/main/clash.yaml",
+    "https://v2ray.neocities.org/v2ray.txt",
+    "https://raw.githubusercontent.com/ermaozi01/free_clash_vpn/main/subscribe/v2ray.txt",
+    "https://mxlsub.me/free",
+    "https://i.stardots.io/subs/linux-do.jpg",
+    "https://freesub.oss-cn-beijing.aliyuncs.com/clash.yaml"
+]
 
 def assign(
     bin_name: str,
@@ -198,6 +216,125 @@ def assign(
 
 
 def aggregate(args: argparse.Namespace) -> None:
+    def upload_to_oss(oss_config, files):
+        """上传文件到阿里云OSS
+
+        Args:
+            oss_config: OSS配置信息
+            files: 待上传的文件列表
+        """
+        try:
+            import oss2
+            from datetime import datetime
+
+            if not all(oss_config.get(k) for k in ["endpoint", "key_id", "key_secret", "bucket_name"]):
+                logger.error("OSS配置信息不完整")
+                return
+
+            # 初始化OSS客户端
+            auth = oss2.Auth(oss_config["key_id"], oss_config["key_secret"])
+            bucket = oss2.Bucket(auth, oss_config["endpoint"], oss_config["bucket_name"])
+
+            # 生成备份时间戳
+            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            oss_path = oss_config.get("oss_path", "").strip("/") + "/" if oss_config.get("oss_path", "") else ""
+            
+            # 遍历上传文件
+            for file in files:
+                # 处理文件路径
+                if isinstance(file, str):
+                    filename = file
+                    filepath = os.path.join(DATA_BASE, file)
+                else:
+                    filename = list(file.keys())[0]
+                    filepath = list(file.values())[0]
+
+                # 检查文件是否存在
+                if not os.path.exists(filepath):
+                    data_base_path = os.path.join(DATA_BASE, filepath)
+                    if os.path.exists(data_base_path):
+                        filepath = data_base_path
+                    else:
+                        logger.error(f"文件不存在: {filepath}")
+                        continue
+
+                # 检查是否为文件
+                if not os.path.isfile(filepath):
+                    logger.error(f"不是有效文件: {filepath}")
+                    continue
+
+                # 读取文件内容
+                with open(filepath, 'rb') as f:
+                    content = f.read()
+
+                    # 上传最新版本
+                    latest_key = f"{oss_path}{filename}"
+                    bucket.put_object(latest_key, content)
+                    logger.info(f"已上传 {filename} 到 OSS: {latest_key}")
+
+                    # 上传备份版本
+                    name, ext = os.path.splitext(filename)
+                    backup_key = f"{oss_path}{name}-{timestamp}{ext}"
+                    bucket.put_object(backup_key, content)
+                    logger.info(f"已上传备份到 OSS: {backup_key}")
+            
+            logger.info("所有文件已成功上传到阿里云 OSS")
+
+        except ImportError:
+            logger.error("请先安装 oss2 模块: pip install oss2")
+        except Exception as e:
+            logger.error(f"上传到阿里云 OSS 失败: {str(e)}")
+
+    def merge_and_convert_subs(urls: list[str], oss_config: dict = None) -> None:
+        """合并并转换订阅链接
+
+        Args:
+            urls: 订阅链接列表
+            oss_config: OSS配置信息
+        """
+        try:
+            # 将所有链接用|连接
+            merged_urls = "|".join(urls)
+            
+            # 构建转换请求URL
+            base_url = "https://url.v1.mk/sub"
+            params = {
+                "target": "clash",
+                "url": merged_urls,
+                "insert": "false", 
+                "config": "https://forcass-res.oss-cn-qingdao.aliyuncs.com/clash_rules.ini",
+                "exclude": "(关注|回复|我们|更|机场|购买|^(?:tg频道:)?(?:www|@).*)",
+                "rename": "`【.*】@``(?:\\d*\\.?){4}:\\d*@``\\@\\w*@``(?:DG|PLM|PP|YD).*@``https.*@``\\(.*\\)@``github.com\\/\\w*``\\|.*\\.com@``V2.*\\.COM``v2.*\\.org``节点日期：[\\d-]*@``->@ 代理至 ``Relay_@中转节点 ``_\\w{2}_@ ``tg频道@``www.*节点``-@ ``\\+@ ``(?!.*Houtar)^@Houtar ``_@ `` {2,}@ ``(?: *\\d+)+$@``\\s$@``\\|$@`",
+                "sort": "true",
+                "udp": "false",
+                "scv": "true"
+            }
+
+            # 发送请求获取转换后的订阅内容
+            query_string = urllib.parse.urlencode(params)
+            url = f"{base_url}?{query_string}"
+            print(f"请求URL: {url}")
+            
+            content = utils.http_get(url=url)
+            if not content:
+                logger.error("获取合并后的订阅内容失败")
+                return
+
+            # 保存转换后的订阅内容
+            merged_file = "sub.yaml"
+            utils.write_file(filename=os.path.join(DATA_BASE, merged_file), lines=content)
+            logger.info(f"已保存合并后的订阅内容到: {merged_file}")
+
+            # 如果提供了OSS配置则上传到OSS
+            if oss_config and all(oss_config.get(k) for k in ["endpoint", "key_id", "key_secret", "bucket_name"]):
+                upload_to_oss(
+                    oss_config=oss_config,
+                    files=[merged_file]
+                )
+                
+        except Exception as e:
+            logger.error(f"合并转换订阅失败: {str(e)}")
+
     def parse_gist_link(link: str) -> tuple[str, str]:
         # 提取 gist 用户名及 id
         words = utils.trim(link).split("/", maxsplit=1)
@@ -406,6 +543,24 @@ def aggregate(args: argparse.Namespace) -> None:
             else:
                 logger.error(f"upload proxies and subscriptions to gist failed")
 
+    # 在处理完 Gist 上传后添加 OSS 上传逻辑
+    if args.oss_endpoint and args.oss_key_id and args.oss_key_secret and args.oss_bucket:
+        oss_config = {
+            "endpoint": args.oss_endpoint,
+            "key_id": args.oss_key_id, 
+            "key_secret": args.oss_key_secret,
+            "bucket_name": args.oss_bucket,
+            "oss_path": args.oss_path,
+        }
+        upload_to_oss(
+            oss_config=oss_config,
+            files=[
+                records,
+                subscribes_file,
+            ]
+        )
+        merge_and_convert_subs(urls=DEFAULT_SUB_URLS, oss_config=oss_config)
+
     # 清理工作空间
     workflow.cleanup(workspace, [])
 
@@ -563,7 +718,7 @@ if __name__ == "__main__":
         "--targets",
         nargs="+",
         choices=subconverter.CONVERT_TARGETS,
-        default=["clash", "v2ray", "singbox"],
+        default=["clash"],
         help=f"choose one or more generated profile type. default to clash, v2ray and singbox. supported: {subconverter.CONVERT_TARGETS}",
     )
 
@@ -594,4 +749,44 @@ if __name__ == "__main__":
         help="the url to the list of airports that you maintain yourself",
     )
 
+    parser.add_argument(
+        "--oss-endpoint",
+        type=str,
+        required=False,
+        default=os.environ.get("OSS_ENDPOINT", ""),
+        help="aliyun oss endpoint",
+    )
+
+    parser.add_argument(
+        "--oss-key-id",
+        type=str,
+        required=False,
+        default=os.environ.get("OSS_ACCESS_KEY_ID", ""),
+        help="aliyun oss access key id",
+    )
+
+    parser.add_argument(
+        "--oss-key-secret",
+        type=str,
+        required=False,
+        default=os.environ.get("OSS_ACCESS_KEY_SECRET", ""),
+        help="aliyun oss access key secret",
+    )
+
+    parser.add_argument(
+        "--oss-bucket",
+        type=str,
+        required=False,
+        default=os.environ.get("OSS_BUCKET", ""),
+        help="aliyun oss bucket name",
+    )
+
+    parser.add_argument(
+        "--oss-path",
+        type=str,
+        required=False,
+        default=os.environ.get("OSS_PATH", ""),
+        help="path prefix in aliyun oss bucket",
+    )
+    
     aggregate(args=parser.parse_args())
