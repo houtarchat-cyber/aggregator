@@ -83,7 +83,16 @@ def assign(
             if items:
                 subscriptions.update(items)
 
-        logger.info("start checking whether existing subscriptions have expired")
+        if oss_config:
+            # 从 OSS 获取订阅
+            endpoint = oss_config['endpoint'].split("//")[1]
+            url = f"https://{oss_config['bucket_name']}.{endpoint}/{oss_config['oss_path']}{filename}"
+            content = utils.http_get(url=url, timeout=30)
+            items = re.findall(pattern, content, flags=re.M)
+            if items:
+                subscriptions.update(items)
+
+        logger.info("开始检查现有订阅是否已过期")
 
         # 过滤已过期订阅并返回
         links = list(subscriptions)
@@ -122,9 +131,10 @@ def assign(
     gist_id = utils.trim(kwargs.get("gist_id", ""))
     username = utils.trim(kwargs.get("username", ""))
     chuck = kwargs.get("chuck", False)
+    oss_config = kwargs.get("oss_config", None)
 
-    # 加载已有订阅
-    subscriptions = load_exist(username, gist_id, access_token, subscribes_file)
+    subscriptions = load_exist(username, gist_id, access_token, subscribes_file, oss_config)
+    logger.info(f"加载现有订阅完成, 数量: {len(subscriptions)}")
     logger.info(f"load exists subscription finished, count: {len(subscriptions)}")
 
     # 是否允许特殊协议
@@ -326,7 +336,7 @@ def aggregate(args: argparse.Namespace) -> None:
             logger.info(f"已保存合并后的订阅内容到: {merged_file}")
 
             # 如果提供了OSS配置则上传到OSS
-            if oss_config and all(oss_config.get(k) for k in ["endpoint", "key_id", "key_secret", "bucket_name"]):
+            if oss_config:
                 upload_to_oss(
                     oss_config=oss_config,
                     files=[merged_file]
@@ -351,6 +361,18 @@ def aggregate(args: argparse.Namespace) -> None:
     access_token = utils.trim(args.key)
     username, gist_id = parse_gist_link(args.gist)
 
+    oss_config = None
+
+    # 如果配置了 OSS,检查 OSS 配置的完整性
+    if args.oss_endpoint and args.oss_key_id and args.oss_key_secret and args.oss_bucket:
+        oss_config = {
+            "endpoint": args.oss_endpoint,
+            "key_id": args.oss_key_id, 
+            "key_secret": args.oss_key_secret,
+            "bucket_name": args.oss_bucket,
+            "oss_path": args.oss_path,
+        }
+
     tasks = assign(
         bin_name=subconverter_bin,
         domains_file="domains.txt",
@@ -366,6 +388,7 @@ def aggregate(args: argparse.Namespace) -> None:
         access_token=access_token,
         subscribes_file=subscribes_file,
         customize_link=args.yourself,
+        oss_config=oss_config,
     )
 
     if not tasks:
@@ -544,14 +567,7 @@ def aggregate(args: argparse.Namespace) -> None:
                 logger.error(f"upload proxies and subscriptions to gist failed")
 
     # 在处理完 Gist 上传后添加 OSS 上传逻辑
-    if args.oss_endpoint and args.oss_key_id and args.oss_key_secret and args.oss_bucket:
-        oss_config = {
-            "endpoint": args.oss_endpoint,
-            "key_id": args.oss_key_id, 
-            "key_secret": args.oss_key_secret,
-            "bucket_name": args.oss_bucket,
-            "oss_path": args.oss_path,
-        }
+    if oss_config:
         upload_to_oss(
             oss_config=oss_config,
             files=[
