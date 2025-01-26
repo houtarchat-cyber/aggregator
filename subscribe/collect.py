@@ -235,6 +235,7 @@ def aggregate(args: argparse.Namespace) -> None:
         """
         try:
             import oss2
+            import mimetypes
             from datetime import datetime
 
             if not all(oss_config.get(k) for k in ["endpoint", "key_id", "key_secret", "bucket_name"]):
@@ -273,20 +274,34 @@ def aggregate(args: argparse.Namespace) -> None:
                     logger.error(f"不是有效文件: {filepath}")
                     continue
 
+                # 获取文件的MIME类型
+                mime_type, _ = mimetypes.guess_type(filepath)
+                if not mime_type:
+                    # 为常见配置文件设置默认MIME类型
+                    if filename.endswith(('.yaml', '.yml')):
+                        mime_type = 'text/yaml; charset=utf-8'
+                    elif filename.endswith('.txt'):
+                        mime_type = 'text/plain; charset=utf-8'
+                    else:
+                        mime_type = 'application/octet-stream'
+
                 # 读取文件内容
                 with open(filepath, 'rb') as f:
                     content = f.read()
 
+                    # 设置headers包含Content-Type
+                    headers = {'Content-Type': mime_type}
+
                     # 上传最新版本
                     latest_key = f"{oss_path}{filename}"
-                    bucket.put_object(latest_key, content)
-                    logger.info(f"已上传 {filename} 到 OSS: {latest_key}")
+                    bucket.put_object(latest_key, content, headers=headers)
+                    logger.info(f"已上传 {filename} 到 OSS: {latest_key} (MIME: {mime_type})")
 
                     # 上传备份版本
                     name, ext = os.path.splitext(filename)
                     backup_key = f"{oss_path}{name}-{timestamp}{ext}"
-                    bucket.put_object(backup_key, content)
-                    logger.info(f"已上传备份到 OSS: {backup_key}")
+                    bucket.put_object(backup_key, content, headers=headers)
+                    logger.info(f"已上传备份到 OSS: {backup_key} (MIME: {mime_type})")
             
             logger.info("所有文件已成功上传到阿里云 OSS")
 
