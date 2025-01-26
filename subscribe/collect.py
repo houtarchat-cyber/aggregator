@@ -278,7 +278,7 @@ def aggregate(args: argparse.Namespace) -> None:
                 mime_type, _ = mimetypes.guess_type(filepath)
                 if not mime_type:
                     # 为常见配置文件设置默认MIME类型
-                    if filename.endswith(('.yaml', '.yml')):
+                    if filename.endswith(('.yaml', '.yml', 'sub')):
                         mime_type = 'text/yaml; charset=utf-8'
                     elif filename.endswith('.txt'):
                         mime_type = 'text/plain; charset=utf-8'
@@ -338,7 +338,7 @@ def aggregate(args: argparse.Namespace) -> None:
                 "target": "clash",
                 "url": merged_urls,
                 "insert": "false", 
-                "config": "https://forcass-res.oss-cn-qingdao.aliyuncs.com/clash_rules.ini",
+                "config": "https://freesub.oss-cn-beijing.aliyuncs.com/rules.ini",
                 "exclude": "(关注|回复|我们|更|机场|购买|^(?:tg频道:)?(?:www|@).*)",
                 "rename": "`【.*】@``(?:\\d*\\.?){4}:\\d*@``\\@\\w*@``(?:DG|PLM|PP|YD).*@``https.*@``\\(.*\\)@``github.com\\/\\w*``\\|.*\\.com@``V2.*\\.COM``v2.*\\.org``节点日期：[\\d-]*@``->@ 代理至 ``Relay_@中转节点 ``_\\w{2}_@ ``tg频道@``www.*节点``-@ ``\\+@ ``(?!.*Houtar)^@Houtar ``_@ `` {2,}@ ``(?: *\\d+)+$@``\\s$@``\\|$@`",
                 "sort": "true",
@@ -368,6 +368,9 @@ def aggregate(args: argparse.Namespace) -> None:
                 logger.error("所有后端均转换失败")
                 return
 
+            # 替换ss为chacha20-ietf-poly1305
+            content = content.replace("cipher: ss", "cipher: chacha20-ietf-poly1305")
+
             # 保存转换后的订阅内容
             merged_file = "sub.yaml"
             utils.write_file(filename=os.path.join(DATA_BASE, merged_file), lines=content)
@@ -377,8 +380,15 @@ def aggregate(args: argparse.Namespace) -> None:
             if oss_config:
                 upload_to_oss(
                     oss_config=oss_config,
-                    files=[merged_file]
+                    files=[{
+                        'sub': os.path.join(DATA_BASE, merged_file)
+                    }]
                 )
+
+            # 上传到Gist
+            if gist_id and access_token:
+                push_client = push.PushToGist(token=access_token)
+                push_client.push_to(content="", push_conf={"gistid": gist_id, "filename": merged_file})
                 
         except Exception as e:
             logger.error(f"订阅转换失败: {str(e)}")
