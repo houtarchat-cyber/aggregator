@@ -277,13 +277,13 @@ def aggregate(args: argparse.Namespace) -> None:
                 # 获取文件的MIME类型
                 mime_type, _ = mimetypes.guess_type(filepath)
                 if not mime_type:
-                    # 为常见配置文件设置默认MIME类型
-                    if filename.endswith(('.yaml', '.yml', 'sub')):
-                        mime_type = 'text/yaml; charset=utf-8'
-                    elif filename.endswith('.txt'):
-                        mime_type = 'text/plain; charset=utf-8'
-                    else:
-                        mime_type = 'application/octet-stream'
+                    mime_type = 'application/octet-stream'
+
+                # 为常见配置文件设置默认MIME类型
+                if filename.endswith(('.yaml', '.yml', 'sub')):
+                    mime_type = 'text/yaml; charset=utf-8'
+                elif filename.endswith('.txt'):
+                    mime_type = 'text/plain; charset=utf-8'
 
                 # 读取文件内容
                 with open(filepath, 'rb') as f:
