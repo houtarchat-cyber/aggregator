@@ -19,6 +19,21 @@ env:
   # github username and gist id, separated by '/'
   GIST_LINK: ${{ secrets.GIST_LINK }}
 
+  # oss access key id
+  OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+
+  # oss access key secret
+  OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+
+  # oss bucket name
+  OSS_BUCKET: ${{ secrets.OSS_BUCKET }}
+
+  # oss endpoint
+  OSS_ENDPOINT: ${{ secrets.OSS_ENDPOINT }}
+
+  # oss path
+  OSS_PATH: ${{ secrets.OSS_PATH }}
+
   # the url to the list of airports that you maintain yourself
   # each line include domain, coupon and invitation code, the domain must be included, and the latter two items are optional
   CUSTOMIZE_LINK: ${{ secrets.CUSTOMIZE_LINK }}
@@ -48,20 +63,32 @@ jobs:
 
       - name: Check
         run: |
-          if [ -z "$GIST_PAT" ]; then
-              echo "Error: environment 'GIST_PAT' cannot be empty"
+          # 检查是否至少配置了 GIST 或 OSS 中的一个
+          if [ -z "$GIST_PAT" ] && [ -z "$OSS_ACCESS_KEY_ID" ]; then
+              echo "Error: At least one of GIST or OSS configuration must be provided"
               exit 1
           fi
 
-          if [ -z "$GIST_LINK" ]; then
-              echo "Error: environment 'GIST_LINK' cannot be empty"
-              exit 1
+          # 如果配置了 GIST,检查 GIST 配置的完整性
+          if [ ! -z "$GIST_PAT" ]; then
+              if [ -z "$GIST_LINK" ]; then
+                  echo "Error: When using GIST, environment 'GIST_LINK' cannot be empty"
+                  exit 1
+              fi
+
+              LINK_PARTS=$(echo "$GIST_LINK" | awk -F'/' 'NF==2 && $1!="" && $2!=""')
+              if [ -z "$LINK_PARTS" ]; then
+                  echo "Error: environment 'GIST_LINK' is not valid, should be 'username/gist_id' format"
+                  exit 1
+              fi
           fi
 
-          LINK_PARTS=$(echo "$GIST_LINK" | awk -F'/' 'NF==2 && $1!="" && $2!=""')
-          if [ -z "$LINK_PARTS" ]; then
-              echo "Error: environment 'GIST_LINK' is not valid, should be 'username/gist_id' format"
-              exit 1
+          # 如果配置了 OSS,检查 OSS 配置的完整性
+          if [ ! -z "$OSS_ACCESS_KEY_ID" ]; then
+              if [ -z "$OSS_ACCESS_KEY_SECRET" ] || [ -z "$OSS_BUCKET" ] || [ -z "$OSS_ENDPOINT" ]; then
+                  echo "Error: When using OSS, all OSS-related configurations must be provided"
+                  exit 1
+              fi
           fi
 
       - name: Collect
