@@ -197,7 +197,7 @@ def cmd(command: list, output: bool = False) -> tuple[bool, str]:
     p = (
         subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         if output
-        else subprocess.Popen(command)
+        else subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     )
     p.wait()
 

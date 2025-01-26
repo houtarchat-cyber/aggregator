@@ -471,7 +471,7 @@ class MailTM(TemporaryMail):
         password = utils.random_chars(length=random.randint(8, 16), punctuation=True)
         response = self._make_account_request(endpoint="accounts", address=address, password=password, retry=retry)
         if not response or "id" not in response or "address" not in response:
-            logger.error(f"[MailTMError] failed to create temporary email, domain: {self.api_address}")
+            print(f"\r[MailTMError] failed to create temporary email, domain: {self.api_address}", end="")
             return None
 
         account = Account(address=response["address"], password=password, id=response["id"])

@@ -213,11 +213,11 @@ class AirPort:
         if not content and (not api_prefix or subpath != ANOTHER_API_PREFIX):
             api_prefix = ANOTHER_API_PREFIX
 
-            logger.debug(f"[QueryError] try to explore another register require, domain: {domain}")
+            print(f"\r[查询错误] 尝试探索其他注册要求, 域名: {domain}", end="")
             content = utils.http_get(url=f"{domain}{api_prefix}guest/comm/config", retry=2, proxy=proxy)
 
         if not content.startswith("{") and content.endswith("}"):
-            logger.debug(f"[QueryError] cannot get register require, domain: {domain}")
+            print(f"\r[查询错误] 无法获取注册要求, 域名: {domain}", end="")
             return RegisterRequire(verify=default, invite=default, recaptcha=default)
 
         try:
@@ -273,7 +273,7 @@ class AirPort:
         self, email: str, password: str, email_code: str = None, invite_code: str = None, retry: int = 3
     ) -> tuple[str, str]:
         if retry <= 0:
-            logger.info(f"achieved max retry when register, domain: {self.ref}")
+            print(f"\r达到最大重试次数, 域名: {self.ref}", end="")
             return "", ""
 
         if not password:
@@ -299,7 +299,7 @@ class AirPort:
             response = urllib.request.urlopen(request, timeout=10, context=utils.CTX)
             code = 400 if not response else response.getcode()
             if code != 200:
-                logger.error(f"[RegisterError] request error when register, domain: {self.ref}, code={code}")
+                print(f"\r[注册错误] 注册请求失败, 域名: {self.ref}, 状态码={code}", end="")
                 return "", ""
 
             self.username = email
@@ -332,7 +332,7 @@ class AirPort:
                 if token:
                     self.sub = f"{self.ref}/api/v1/client/subscribe?token={token}"
                 else:
-                    logger.error(f"[RegisterError] cannot get token when register, domain: {self.ref}")
+                    print(f"\r[注册错误] 无法获取订阅令牌, 域名: {self.ref}", end="")
 
             return cookies, authorization
         except:
@@ -358,10 +358,10 @@ class AirPort:
         )
 
         if not plan:
-            logger.info(f"not exists free plan, domain: {self.ref}")
+            print(f"\r不存在免费套餐, 域名: {self.ref}", end="")
             return False
         else:
-            logger.info(f"found free plan, domain: {self.ref}, plan: {plan}")
+            print(f"\r找到免费套餐, 域名: {self.ref}, 套餐: {plan}", end="")
 
         methods = renewal.get_payment_method(
             domain=self.ref,
@@ -391,7 +391,7 @@ class AirPort:
         )
 
         if success and (plan.renew or plan.reset):
-            logger.info(f"[RegisterSuccess] register successed, domain: {self.ref}")
+            print(f"\r[注册成功] 注册成功, 域名: {self.ref}", end="")
 
         return success
 
@@ -466,7 +466,7 @@ class AirPort:
                 mailbox = mailtm.create_instance(only_gmail=only_gmail)
                 account = mailbox.get_account()
                 if not account:
-                    logger.error(f"cannot create temporary email account, site: {self.ref}")
+                    print(f"\r无法创建临时邮箱账号, 站点: {self.ref}", end="")
                     return "", ""
 
                 message = None
@@ -479,13 +479,9 @@ class AirPort:
                             executor.shutdown(wait=False)
                             return "", ""
                         message = future.result(timeout=120)
-                        logger.debug(
-                            f"email has been received, domain: {self.ref}\tcost: {int(time.time()- starttime)}s"
-                        )
+                        print(f"\r邮件已收到, 域名: {self.ref}\t耗时: {int(time.time()- starttime)}秒", end="")
                     except concurrent.futures.TimeoutError:
-                        logger.error(
-                            f"receiving mail timeout, site: {self.ref}, address: {mailbox.api_address}, email: {account.address}"
-                        )
+                        print(f"\r接收邮件超时, 站点: {self.ref}, 地址: {mailbox.api_address}, 邮箱: {account.address}", end="")
 
                 if not message:
                     return "", ""
@@ -494,7 +490,7 @@ class AirPort:
                 mask = mailbox.extract_mask(message.text) or mailbox.extract_mask(message.text, r"[：\s]+([0-9]{6})")
                 mailbox.delete_account(account=account)
                 if not mask:
-                    logger.error(f"cannot fetch mask, url: {self.ref}, message: {message.text}")
+                    print(f"\r无法获取验证码, 网址: {self.ref}, 邮件内容: {message.text}", end="")
                     return "", ""
 
                 return self.register(
@@ -522,13 +518,13 @@ class AirPort:
         special_protocols: bool = False,
     ) -> list:
         if "" == self.sub:
-            logger.error(f"[ParseError] cannot found any proxies because subscribe url is empty, domain: {self.ref}")
+            print(f"\r[解析错误] 订阅链接为空无法获取节点, 域名: {self.ref}", end="")
             return []
 
         if self.sub.startswith(utils.FILEPATH_PROTOCAL):
             self.sub = self.sub[len(utils.FILEPATH_PROTOCAL) :]
             if not os.path.exists(self.sub) or not os.path.isfile(self.sub):
-                logger.error(f"[ParseError] file: {self.sub} not found")
+                print(f"\r[解析错误] 文件不存在: {self.sub}", end="")
                 return []
 
             with open(self.sub, "r", encoding="UTF8") as f:
@@ -550,7 +546,7 @@ class AirPort:
         if "" == text or (
             text.startswith("{") and text.endswith("}") and not re.search(r'"outbounds":', text, flags=re.I)
         ):
-            logger.error(f"[ParseError] cannot found any proxies, subscribe: {utils.mask(url=self.sub)}")
+            print(f"\r[解析错误] 未找到任何节点, 订阅: {utils.mask(url=self.sub)}", end="")
             return []
 
         chatgpt = chatgpt if chatgpt and type(chatgpt) == dict else None
@@ -573,7 +569,7 @@ class AirPort:
             )
 
             if not nodes:
-                logger.info(f"cannot found any proxy, domain: {self.ref}")
+                print(f"\r未找到任何节点, 域名: {self.ref}", end="")
                 return []
 
             proxies = []
@@ -597,9 +593,7 @@ class AirPort:
                         if self.exclude and re.search(self.exclude, name, re.I):
                             continue
                 except:
-                    logger.error(
-                        f"filter proxies error, maybe include or exclude regex exists problems, include: {self.include}\texclude: {self.exclude}"
-                    )
+                    print(f"\r过滤节点出错, 可能包含或排除的正则表达式存在问题, 包含: {self.include}\t排除: {self.exclude}", end="")
 
                 try:
                     if self.rename:
@@ -641,9 +635,7 @@ class AirPort:
                     regex = r"(?:https?://)?(?:[a-zA-Z0-9\u4e00-\u9fa5\-]+\.)+[a-zA-Z\u4e00-\u9fa5]{2,}"
                     name = re.sub(regex, "", name, flags=re.I)
                 except:
-                    logger.error(
-                        f"rename error, name: {name},\trename: {self.rename}\tseparator: {RENAME_SEPARATOR}\tchatgpt: {pattern}\tdomain: {self.ref}"
-                    )
+                    print(f"\r重命名出错, 名称: {name},\t重命名规则: {self.rename}\t分隔符: {RENAME_SEPARATOR}\tchatgpt: {pattern}\t域名: {self.ref}", end="")
 
                 name = re.sub(
                     r"\[[^\[]*\]|[（\(][^（\(]*[\)）]|{[^{]*}|<[^<]*>|【[^【]*】|「[^「]*」|[^a-zA-Z0-9\u4e00-\u9fa5_×\.\-|\s]",
@@ -695,9 +687,7 @@ class AirPort:
 
             return proxies
         except:
-            logger.error(
-                f"[ParseError] occur error when parse data, domain: {self.ref}, message:\n{traceback.format_exc()}"
-            )
+            print(f"\r[解析错误] 解析数据时发生错误, 域名: {self.ref}, 错误信息:\n{traceback.format_exc()}", end="")
             return []
 
     @staticmethod
@@ -758,7 +748,7 @@ class AirPort:
                 if os.path.exists(v2ray_file):
                     os.remove(v2ray_file)
 
-                logger.error(f"save file fialed, artifact: {artifact}")
+                print(f"\r保存文件失败, 标识: {artifact}", end="")
                 traceback.print_exc()
 
             generate_conf = os.path.join(PATH, "subconverter", "generate.ini")
@@ -772,13 +762,13 @@ class AirPort:
                 ignore,
             )
             if not success:
-                logger.error("cannot generate subconverter config file")
+                print(f"\r无法生成订阅转换配置文件", end="")
                 os.remove(v2ray_file)
                 return []
 
             time.sleep(random.random())
             success = subconverter.convert(binname=program, artifact=artifact)
-            logger.info(f"subconverter completed, artifact: [{artifact}]\tsuccess=[{success}]")
+            print(f"\r订阅转换完成, 标识: [{artifact}]\t成功=[{success}]", end="")
 
             os.remove(v2ray_file)
             if not success:
@@ -800,7 +790,7 @@ class AirPort:
                     if throw:
                         raise e
                     else:
-                        logger.error(f"cannot load yaml file, artifact: {artifact}, message:\n{traceback.format_exc()}")
+                        print(f"\r无法加载YAML文件, 标识: {artifact}, 错误信息:\n{traceback.format_exc()}", end="")
 
                 nodes = [] if not config else config.get("proxies", [])
 
@@ -820,7 +810,7 @@ class AirPort:
                 if throw:
                     raise e
                 else:
-                    logger.error(f"cannot load yaml file, artifact: {artifact}, message:\n{traceback.format_exc()}")
+                    print(f"\r无法加载YAML文件, 标识: {artifact}, 错误信息:\n{traceback.format_exc()}", end="")
 
         return [] if not nodes else [x for x in nodes if verify(x, special)]
 

@@ -60,7 +60,7 @@ def assign(
     num_threads: int = 0,
     **kwargs,
 ) -> list[TaskConfig]:
-    def load_exist(username: str, gist_id: str, access_token: str, filename: str) -> list[str]:
+    def load_exist(username: str, gist_id: str, access_token: str, filename: str, oss_config: dict = None) -> list[str]:
         if not filename:
             return []
 
@@ -107,7 +107,7 @@ def assign(
 
     def parse_domains(content: str) -> dict:
         if not content or not isinstance(content, str):
-            logger.warning("cannot found any domain due to content is empty or not string")
+            logger.warning("无法找到任何域名因为内容为空或不是字符串")
             return {}
 
         records = {}
@@ -133,9 +133,9 @@ def assign(
     chuck = kwargs.get("chuck", False)
     oss_config = kwargs.get("oss_config", None)
 
+    # 加载已有订阅
     subscriptions = load_exist(username, gist_id, access_token, subscribes_file, oss_config)
     logger.info(f"加载现有订阅完成, 数量: {len(subscriptions)}")
-    logger.info(f"load exists subscription finished, count: {len(subscriptions)}")
 
     # 是否允许特殊协议
     special_protocols = AirPort.enable_special_protocols()
@@ -152,7 +152,7 @@ def assign(
 
     # 仅更新已有订阅
     if tasks and kwargs.get("refresh", False):
-        logger.info("skip registering new accounts, will use existing subscriptions for refreshing")
+        logger.info("跳过注册新账号, 将使用现有订阅进行刷新")
         return tasks
 
     domains, delimiter = {}, "@#@#"
@@ -200,7 +200,7 @@ def assign(
                     domains.update(parse_domains(content=str(f.read())))
 
     if not domains:
-        logger.error("cannot collect any new airport for free use")
+        logger.error("无法收集任何可免费使用的机场")
         return tasks
 
     if overwrite:
@@ -306,8 +306,19 @@ def aggregate(args: argparse.Namespace) -> None:
             # 将所有链接用|连接
             merged_urls = "|".join(urls)
             
-            # 构建转换请求URL
-            base_url = "https://url.v1.mk/sub"
+            # 定义后端URL列表,按优先级排序
+            backend_urls = [
+                "https://api.v1.mk/sub",
+                "https://sub.d1.mk/sub",
+                "https://api.2c.lol/sub",
+                "https://apicn.2c.lol/sub", 
+                "https://banbot.2c.lol/sub",
+                "https://chromeua.2c.lol/sub",
+                "https://gouasub.2c.lol/sub",
+                "https://subcfua.2c.lol/sub",
+                "https://miaokoua.2c.lol/sub"
+            ]
+            
             params = {
                 "target": "clash",
                 "url": merged_urls,
@@ -320,14 +331,26 @@ def aggregate(args: argparse.Namespace) -> None:
                 "scv": "true"
             }
 
-            # 发送请求获取转换后的订阅内容
             query_string = urllib.parse.urlencode(params)
-            url = f"{base_url}?{query_string}"
-            print(f"请求URL: {url}")
+            content = None
             
-            content = utils.http_get(url=url)
+            # 遍历尝试每个后端URL
+            for backend_url in backend_urls:
+                try:
+                    url = f"{backend_url}?{query_string}"
+                    logger.info(f"正在请求订阅转换: {url}")
+                    
+                    content = utils.http_get(url=url)
+                    if content:
+                        logger.info(f"使用后端 {backend_url} 转换成功")
+                        break
+                        
+                except Exception as e:
+                    logger.warning(f"后端 {backend_url} 转换失败: {str(e)}")
+                    continue
+                    
             if not content:
-                logger.error("获取合并后的订阅内容失败")
+                logger.error("所有后端均转换失败")
                 return
 
             # 保存转换后的订阅内容
@@ -343,7 +366,7 @@ def aggregate(args: argparse.Namespace) -> None:
                 )
                 
         except Exception as e:
-            logger.error(f"合并转换订阅失败: {str(e)}")
+            logger.error(f"订阅转换失败: {str(e)}")
 
     def parse_gist_link(link: str) -> tuple[str, str]:
         # 提取 gist 用户名及 id
@@ -392,13 +415,13 @@ def aggregate(args: argparse.Namespace) -> None:
     )
 
     if not tasks:
-        logger.error("cannot found any valid config, exit")
+        logger.error("未找到任何有效配置, 退出")
         sys.exit(0)
 
     # 已有订阅已经做过过期检查，无需再测
     old_subscriptions = set([t.sub for t in tasks if t.sub])
 
-    logger.info(f"start generate subscribes information, tasks: {len(tasks)}")
+    logger.info(f"开始生成订阅信息, 任务数量: {len(tasks)}")
     generate_conf = os.path.join(PATH, "subconverter", "generate.ini")
     if os.path.exists(generate_conf) and os.path.isfile(generate_conf):
         os.remove(generate_conf)
@@ -407,7 +430,7 @@ def aggregate(args: argparse.Namespace) -> None:
     proxies = list(itertools.chain.from_iterable([x[1] for x in results if x]))
 
     if len(proxies) == 0:
-        logger.error("exit because cannot fetch any proxy node")
+        logger.error("退出因为无法获取任何代理节点")
         sys.exit(0)
 
     nodes, workspace = [], os.path.join(PATH, "clash")
@@ -422,7 +445,7 @@ def aggregate(args: argparse.Namespace) -> None:
         # 可执行权限
         utils.chmod(binpath)
 
-        logger.info(f"startup clash now, workspace: {workspace}, config: {confif_file}")
+        logger.info(f"正在启动 clash, 工作目录: {workspace}, 配置: {confif_file}")
         process = subprocess.Popen(
             [
                 binpath,
@@ -432,7 +455,7 @@ def aggregate(args: argparse.Namespace) -> None:
                 os.path.join(workspace, confif_file),
             ]
         )
-        logger.info(f"clash start success, begin check proxies, num: {len(proxies)}")
+        logger.info(f"clash 启动成功, 开始检查代理, 数量: {len(proxies)}")
 
         time.sleep(random.randint(3, 6))
         params = [
@@ -450,11 +473,11 @@ def aggregate(args: argparse.Namespace) -> None:
         try:
             process.terminate()
         except:
-            logger.error(f"terminate clash process error")
+            logger.error(f"终止 clash 进程出错")
 
         nodes = [proxies[i] for i in range(len(proxies)) if masks[i]]
         if len(nodes) <= 0:
-            logger.error(f"cannot fetch any proxy")
+            logger.error(f"无法获取任何代理")
             sys.exit(0)
 
     subscriptions = set()
@@ -512,7 +535,7 @@ def aggregate(args: argparse.Namespace) -> None:
         logger.error(f"all targets convert failed, you can view the temporary file: {supplier}")
         sys.exit(1)
 
-    logger.info(f"found {len(nodes)} proxies, save it to {list(records.values())}")
+    logger.info(f"找到 {len(nodes)} 个代理, 保存到 {list(records.values())}")
 
     life, traffic = max(0, args.life), max(0, args.flow)
     if life > 0 or traffic > 0:
@@ -536,7 +559,7 @@ def aggregate(args: argparse.Namespace) -> None:
         # 合并新老订阅
         urls.extend(list(old_subscriptions))
 
-        logger.info(f"filter subscriptions finished, total: {total}, found: {len(urls)}, discard: {discard}")
+        logger.info(f"过滤订阅完成, 总数: {total}, 找到: {len(urls)}, 丢弃: {discard}")
 
     utils.write_file(filename=os.path.join(DATA_BASE, subscribes_file), lines=urls)
     domains = [utils.extract_domain(url=x, include_protocal=True) for x in urls]
@@ -562,9 +585,9 @@ def aggregate(args: argparse.Namespace) -> None:
             # 上传
             success = push_client.push_to(content="", push_conf=push_conf, payload={"files": files}, group="collect")
             if success:
-                logger.info(f"upload proxies and subscriptions to gist successed")
+                logger.info(f"上传代理和订阅到 gist 成功")
             else:
-                logger.error(f"upload proxies and subscriptions to gist failed")
+                logger.error(f"上传代理和订阅到 gist 失败")
 
     # 在处理完 Gist 上传后添加 OSS 上传逻辑
     if oss_config:

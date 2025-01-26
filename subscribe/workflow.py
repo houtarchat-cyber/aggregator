@@ -102,7 +102,7 @@ def execute(task_conf: TaskConfig) -> list:
         api_prefix=task_conf.api_prefix,
     )
 
-    logger.info(f"start fetch proxy: name=[{task_conf.name}]\tid=[{task_conf.index}]\tdomain=[{obj.ref}]")
+    print(f"\r正在获取代理: 名称=[{task_conf.name}] 编号=[{task_conf.index}] 域名=[{obj.ref}]", end="")
 
     # 套餐续期
     if task_conf.renew:
@@ -135,9 +135,7 @@ def execute(task_conf: TaskConfig) -> list:
         special_protocols=task_conf.special_protocols,
     )
 
-    logger.info(
-        f"finished fetch proxy: name=[{task_conf.name}]\tid=[{task_conf.index}]\tdomain=[{obj.ref}]\tcount=[{len(proxies)}]"
-    )
+    print(f"\r代理获取完成: 名称=[{task_conf.name}]\t编号=[{task_conf.index}]\t域名=[{obj.ref}]\t数量=[{len(proxies)}]", end="")
 
     return proxies
 
@@ -194,7 +192,7 @@ def dedup_task(tasks: list) -> list:
 
 def exists(tasks: list, task: TaskConfig) -> bool:
     if not isinstance(task, TaskConfig):
-        logger.error(f"[DedupError] need type 'TaskConfig' but got type '{type(task)}'")
+        logger.error(f"[去重错误] 需要类型 'TaskConfig' 但获得类型 '{type(task)}'")
         return True
     if not tasks:
         return False
@@ -243,7 +241,7 @@ def merge_config(configs: list) -> list:
     items = []
     for conf in configs:
         if not isinstance(conf, dict):
-            logger.error(f"[MergeError] need type 'dict' but got type '{type(conf)}'")
+            logger.error(f"[合并错误] 需要类型 'dict' 但获得类型 '{type(conf)}'")
             continue
 
         sub = conf.get("sub", "")
@@ -281,7 +279,7 @@ def merge_config(configs: list) -> list:
 
 def refresh(config: dict, push: PushTo, alives: dict, filepath: str = "", skip_remark: bool = False) -> None:
     if not config or not push:
-        logger.error("[UpdateError] cannot update remote config because content is empty")
+        logger.error("[更新错误] 无法更新远程配置因为内容为空")
         return
 
     # mark invalid crawled subscription
@@ -315,11 +313,11 @@ def refresh(config: dict, push: PushTo, alives: dict, filepath: str = "", skip_r
 
     update_conf = config.get("update", {})
     if not update_conf.get("enable", False):
-        logger.debug("[UpdateError] skip update remote config because enable=[False]")
+        logger.debug("[更新错误] 跳过更新远程配置因为 enable=[False]")
         return
 
     if not push.validate(push_conf=update_conf):
-        logger.error(f"[UpdateError] update config is invalidate")
+        logger.error(f"[更新错误] 更新配置无效")
         return
 
     domains = merge_config(configs=config.get("domains", []))
@@ -346,7 +344,7 @@ def refresh(config: dict, push: PushTo, alives: dict, filepath: str = "", skip_r
         domains = config.get("domains", [])
 
     if not domains:
-        logger.error("[UpdateError] skip update remote config because domians is empty")
+        logger.error("[更新错误] 跳过更新远程配置因为域名列表为空")
         return
 
     content = json.dumps(config)
